@@ -6,7 +6,7 @@ public class NamedThreadFactory implements ThreadFactory {
     private final AtomicInteger mThreadNum = new AtomicInteger(1);
 
     public Thread newThread(Runnable r) {
-        Thread t = new Thread(r, "MQSenderPool-Thread-" + mThreadNum.getAndIncrement());
+        Thread t = new Thread(r, "MQSenderMultiThread-Thread-" + mThreadNum.getAndIncrement());
         System.out.println(t.getName() + " has been created");
         return t;
     }

@@ -6,8 +6,8 @@ import javax.jms.*;
 import java.io.*;
 import java.util.concurrent.*;
 
-public class MQSender {
-    static final int BATCH_SIZE = 1;
+public class MQSenderMultiThread {
+    static final int BATCH_SIZE = 100;
     static final int TASK_COUNT = 5;
     final String HOST_NAME = "gimli-a2.it.volvo.net";
     final int PORT = 1435;
@@ -17,17 +17,18 @@ public class MQSender {
 
     MQQueueConnectionFactory mqcf;
     QueueConnection qconn;
-    QueueSession session;
-    Queue queue;
+    //QueueSession session;
+    //Queue queue;
     static String filePath;
 
     private static CountDownLatch cdl = new CountDownLatch(TASK_COUNT);
 
     public void sendMessage() throws JMSException, InterruptedException, FileNotFoundException, UnsupportedEncodingException {
+        long startTime = System.currentTimeMillis();
         openConnection();
         String messageText = loadMessageText(filePath);
 
-        ExecutorService threadPool = new ThreadPoolExecutor(2,
+        ExecutorService threadPool = new ThreadPoolExecutor(5,
                 5,
                 5,
                 TimeUnit.SECONDS,
@@ -36,32 +37,41 @@ public class MQSender {
                 new ThreadPoolExecutor.AbortPolicy()
         );
 
-        for(int i=0;i<TASK_COUNT;i++){
-            threadPool.execute(()->{
-                for(int j=0;j<BATCH_SIZE;j++){
-                    try {
-                        //create producer
-                        session = qconn.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
-                        queue = session.createQueue(QUEUE_NAME);
-                        MessageProducer sender = session.createProducer(queue);
+        for(int i=1;i<=TASK_COUNT;i++){
+            threadPool.execute(()-> {
+                //create producer
+                try {
+                    QueueSession session = qconn.createQueueSession(false, Session.AUTO_ACKNOWLEDGE);
+                    Queue queue = session.createQueue(QUEUE_NAME);
+                    MessageProducer sender = session.createProducer(queue);
 
-                        //create message
+                    for (int j = 1; j <= BATCH_SIZE; j++) {
+
+                        //create and send message
                         TextMessage message = session.createTextMessage();
                         message.setText(messageText);
-
                         sender.send(message);
-                    } catch (JMSException e) {
-                        e.printStackTrace();
+
+                        if (j % 50 == 0) {
+                            System.out.println(Thread.currentThread().getName() + " sent message: " + j);
+                        } else if (j == BATCH_SIZE) {
+                            System.out.println(Thread.currentThread().getName() + " sent message: " + j);
+                        }
                     }
-                    finally {
-                        cdl.countDown();
-                    }
+                }
+                catch (JMSException e) {
+                    e.printStackTrace();
+                }
+                finally{
+                cdl.countDown();
                 }
             });
         }
         cdl.await();
         threadPool.shutdown();
         closeConnection();
+        long totalTime = System.currentTimeMillis()-startTime;
+        System.out.println("Time Elapsed: " + totalTime/1000/60);
     }
 
     private String loadMessageText(String filePath) throws FileNotFoundException, UnsupportedEncodingException {
@@ -113,7 +123,7 @@ public class MQSender {
             filePath = line.getOptionValue("filename");
         }
 
-        MQSender sender = new MQSender();
+        MQSenderMultiThread sender = new MQSenderMultiThread();
         try {
             sender.sendMessage();
         } catch (FileNotFoundException e) {
